@@ -152,6 +152,10 @@ export class ThemeSupport extends EventTarget {
       this.customSheets.clear();
       this.dispatchEvent(new ThemeChangeEvent());
     }
+
+    // Baseline is the name of Chrome's default color theme and there are two of these: default and grayscale.
+    // [RN] Force 'baseline-grayscale' theme for now.
+    document.documentElement.classList.add('baseline-grayscale');
   }
 
   static async fetchColors(document: Document|undefined): Promise<void> {
@@ -173,8 +177,11 @@ export class ThemeSupport extends EventTarget {
     const COLORS_CSS_SELECTOR = 'link[href*=\'//theme/colors.css\']';
     const colorCssNode = document.querySelector(COLORS_CSS_SELECTOR);
     document.body.appendChild(newColorsCssLink);
-    if (colorCssNode && await newColorsLoaded) {
-      colorCssNode.remove();
+    if (await newColorsLoaded) {
+      if (colorCssNode) {
+        colorCssNode.remove();
+      }
+      ThemeSupport.instance().applyTheme(document);
     }
   }
 }

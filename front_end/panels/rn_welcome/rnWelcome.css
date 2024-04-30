@@ -13,7 +13,7 @@
   height: 100%;
   padding: 16px;
   text-align: center;
-  background-color: var(--color-background-elevation-0);
+  background-color: var(--sys-color-base);
 }
 
 .rn-welcome-header {
