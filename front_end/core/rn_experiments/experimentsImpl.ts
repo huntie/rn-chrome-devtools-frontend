@@ -188,20 +188,24 @@ class RNExperimentsSupport {
       ) {
         other.enableExperimentsByDefault([name]);
       }
-      if (
-        !spec.configurable({
-          isReactNativeEntryPoint: state.isReactNativeEntryPoint,
-        })
-      ) {
-        other.setNonConfigurableExperiments([name]);
-      }
+      // TODOS:
+      // 1) Remove this reimplementation from the sync merge
+      // 2) Figure out why cleanupStaleExperiments treats these differently
+
+      // if (
+      //   !spec.configurable({
+      //     isReactNativeEntryPoint: state.isReactNativeEntryPoint,
+      //   })
+      // ) {
+      //   other.setNonConfigurableExperiments([name]);
+      // }
     }
     for (const name of this.#defaultEnabledCoreExperiments) {
       other.enableExperimentsByDefault([name]);
     }
-    for (const name of this.#nonConfigurableCoreExperiments) {
-      other.setNonConfigurableExperiments([name]);
-    }
+    // for (const name of this.#nonConfigurableCoreExperiments) {
+    //   other.setNonConfigurableExperiments([name]);
+    // }
     state.didInitializeExperiments = true;
   }
 }

@@ -132,12 +132,12 @@ export class ExperimentsSupport {
     return result;
   }
 
-  setNonConfigurableExperiments(experimentNames: string[]): void {
-    for (const experimentName of experimentNames) {
-      this.checkExperiment(experimentName);
-      this.#enabledTransiently.add(experimentName);
-    }
-  }
+  // setNonConfigurableExperiments(experimentNames: string[]): void {
+  //   for (const experimentName of experimentNames) {
+  //     this.checkExperiment(experimentName);
+  //     this.#enabledTransiently.add(experimentName);
+  //   }
+  // }
 
   private setExperimentsSetting(value: Object): void {
     if (!self.localStorage) {

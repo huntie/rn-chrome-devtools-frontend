@@ -64,6 +64,8 @@ UI.ViewManager.maybeRemoveViewExtension('throttling-conditions');
 
 RNExperiments.RNExperimentsImpl.setIsReactNativeEntryPoint(true);
 RNExperiments.RNExperimentsImpl.Instance.enableExperimentsByDefault([
+  Root.Runtime.ExperimentName.JS_HEAP_PROFILER_ENABLE,
+  Root.Runtime.ExperimentName.JS_PROFILER_TEMP_ENABLE,
   Root.Runtime.ExperimentName.REACT_NATIVE_SPECIFIC_UI,
   Root.Runtime.ExperimentName.ENABLE_REACT_DEVTOOLS_PANEL,
 ]);
