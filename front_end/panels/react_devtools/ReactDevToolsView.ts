@@ -26,14 +26,8 @@ const UIStrings = {
 const str_ = i18n.i18n.registerUIStrings('panels/react_devtools/ReactDevToolsView.ts', UIStrings);
 const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
 
+type ReactDevToolsInitializedEvent = Common.EventTarget.EventTargetEvent<ReactDevToolsModelEventTypes[ReactDevToolsModelEvents.Initialized]>;
 type ReactDevToolsMessageReceivedEvent = Common.EventTarget.EventTargetEvent<ReactDevToolsModelEventTypes[ReactDevToolsModelEvents.MessageReceived]>;
-type ContextDestroyedEvent = Common.EventTarget.EventTargetEvent<SDK.RuntimeModel.EventTypes[SDK.RuntimeModel.Events.ExecutionContextDestroyed]>;
-type ContextCreatedEvent = Common.EventTarget.EventTargetEvent<SDK.RuntimeModel.EventTypes[SDK.RuntimeModel.Events.ExecutionContextCreated]>;
-
-// Hermes doesn't support Workers API yet, so there is a single execution context at the moment
-// This will be used for an extra-check to future-proof this logic
-// See https://github.com/facebook/react-native/blob/40b54ee671e593d125630391119b880aebc8393d/packages/react-native/ReactCommon/jsinspector-modern/InstanceTarget.cpp#L61
-const MAIN_EXECUTION_CONTEXT_NAME = 'main';
 
 // Based on ExtensionServer.onOpenResource
 async function openResource(
@@ -76,8 +70,9 @@ function viewElementSourceFunction(source: ReactDevToolsTypes.Source, symbolicat
 
 export class ReactDevToolsViewImpl extends UI.View.SimpleView {
   private readonly wall: ReactDevToolsTypes.Wall;
-  private bridge: ReactDevToolsTypes.Bridge;
-  private store: ReactDevToolsTypes.Store;
+  private bridge: ReactDevToolsTypes.Bridge | null = null;
+  private store: ReactDevToolsTypes.Store | null = null;
+  private executionContext: SDK.RuntimeModel.ExecutionContext | null = null;
   private readonly listeners: Set<ReactDevToolsTypes.WallListener> = new Set();
 
   constructor() {
@@ -94,37 +89,57 @@ export class ReactDevToolsViewImpl extends UI.View.SimpleView {
       send: (event, payload): void => this.sendMessage(event, payload),
     };
 
-    // To use the custom Wall we've created, we need to also create our own "Bridge" and "Store" objects.
-    this.bridge = ReactDevTools.createBridge(this.wall);
-    this.store = ReactDevTools.createStore(this.bridge);
-
     // Notify backend if Chrome DevTools was closed, marking frontend as disconnected
-    window.addEventListener('beforeunload', () => this.bridge.shutdown());
+    window.addEventListener('beforeunload', () => this.bridge?.shutdown());
 
+    SDK.TargetManager.TargetManager.instance().addModelListener(
+      ReactDevToolsModel,
+      ReactDevToolsModelEvents.Initialized,
+      this.onInitialized,
+      this,
+    );
+    SDK.TargetManager.TargetManager.instance().addModelListener(
+      ReactDevToolsModel,
+      ReactDevToolsModelEvents.Destroyed,
+      this.onDestroyed,
+      this,
+    );
     SDK.TargetManager.TargetManager.instance().addModelListener(
       ReactDevToolsModel,
       ReactDevToolsModelEvents.MessageReceived,
       this.onMessage,
       this,
     );
-    SDK.TargetManager.TargetManager.instance().addModelListener(
-      ReactDevToolsModel,
-      ReactDevToolsModelEvents.Initialized,
-      this.initialize,
-      this,
-    );
-    SDK.TargetManager.TargetManager.instance().addModelListener(
-      SDK.RuntimeModel.RuntimeModel,
-      SDK.RuntimeModel.Events.ExecutionContextDestroyed,
-      this.onExecutionContextDestroyed,
-      this,
-    );
-    SDK.TargetManager.TargetManager.instance().addModelListener(
-      SDK.RuntimeModel.RuntimeModel,
-      SDK.RuntimeModel.Events.ExecutionContextCreated,
-      this.onExecutionContextCreated,
-      this,
-    );
+
+    this.renderLoader();
+  }
+
+  private onInitialized({data: executionContext}: ReactDevToolsInitializedEvent): void {
+    this.clearLoader();
+
+    this.executionContext = executionContext;
+    this.bridge = ReactDevTools.createBridge(this.wall);
+    this.store = ReactDevTools.createStore(this.bridge);
+
+    const usingDarkTheme = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    ReactDevTools.initialize(this.contentElement, {
+      bridge: this.bridge,
+      store: this.store,
+      theme: usingDarkTheme ? 'dark' : 'light',
+      canViewElementSourceFunction: () => true,
+      viewElementSourceFunction,
+    });
+  }
+
+  private onDestroyed(): void {
+    // Unmount React DevTools view
+    this.contentElement.removeChildren();
+
+    this.executionContext = null;
+    this.bridge?.shutdown();
+    this.bridge = null;
+    this.store = null;
+    this.listeners.clear();
 
     this.renderLoader();
   }
@@ -144,19 +159,6 @@ export class ReactDevToolsViewImpl extends UI.View.SimpleView {
     this.contentElement.removeChildren();
   }
 
-  private initialize(): void {
-    this.clearLoader();
-
-    const usingDarkTheme = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    ReactDevTools.initialize(this.contentElement, {
-      bridge: this.bridge,
-      store: this.store,
-      theme: usingDarkTheme ? 'dark' : 'light',
-      canViewElementSourceFunction: () => true,
-      viewElementSourceFunction,
-    });
-  }
-
   override wasShown(): void {
     super.wasShown();
 
@@ -164,13 +166,13 @@ export class ReactDevToolsViewImpl extends UI.View.SimpleView {
     this.registerCSSFiles([ReactDevTools.CSS]);
   }
 
-  private onMessage(event: ReactDevToolsMessageReceivedEvent): void {
-    if (!event.data) {
+  private onMessage({data: message}: ReactDevToolsMessageReceivedEvent): void {
+    if (!message) {
       return;
     }
 
     for (const listener of this.listeners) {
-      listener(event.data);
+      listener(message);
     }
   }
 
@@ -178,31 +180,5 @@ export class ReactDevToolsViewImpl extends UI.View.SimpleView {
     for (const model of SDK.TargetManager.TargetManager.instance().models(ReactDevToolsModel, {scoped: true})) {
       void model.sendMessage({event, payload});
     }
-  }
-
-  private onExecutionContextDestroyed(event: ContextDestroyedEvent): void {
-    if (event.data.name !== MAIN_EXECUTION_CONTEXT_NAME) {
-      return;
-    }
-
-    // Unmount React DevTools view
-    this.contentElement.removeChildren();
-
-    this.bridge.shutdown();
-    this.listeners.clear();
-
-    this.renderLoader();
-  }
-
-  private onExecutionContextCreated(event: ContextCreatedEvent): void {
-    if (event.data.name !== MAIN_EXECUTION_CONTEXT_NAME) {
-      return;
-    }
-
-    // Recreate bridge, because previous one was shutdown
-    this.bridge = ReactDevTools.createBridge(this.wall);
-    this.store = ReactDevTools.createStore(this.bridge);
-
-    this.initialize();
   }
 }

@@ -47,11 +47,16 @@ export class ReactDevToolsBindingsModel extends SDK.SDKModel.SDKModel {
   private bindingCalled(event: BindingCalledEventTargetEvent): void {
     const serializedMessage = event.data.payload;
 
+    let parsedMessage = null;
+
     try {
-      const {domain, message} = JSON.parse(serializedMessage);
-      this.dispatchMessageToDomainEventListeners(domain, message);
+      parsedMessage = JSON.parse(serializedMessage);
     } catch (err) {
-      throw new Error('Failed to parse bindingCalled event payload:', err);
+      throw new Error('Failed to parse bindingCalled event payload', {cause: err});
+    }
+
+    if (parsedMessage) {
+      this.dispatchMessageToDomainEventListeners(parsedMessage.domain, parsedMessage.message);
     }
   }
 
